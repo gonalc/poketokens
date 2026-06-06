@@ -1,35 +1,17 @@
-import { readFile } from "fs/promises";
 import { SerialPort } from "serialport";
-import { homedir } from "os";
-import { join } from "path";
+import { getTodayPercent } from "./src/usage.js";
 
 const BAUD_RATE = 115200;
 const POLL_MS = 30_000;
 const SERIAL_MS = 1_000;
-const CACHE_PATH = join(homedir(), ".claude", "stats-cache.json");
 
 let tokenPercent = 0;
 
 async function refreshUsage() {
   try {
-    const raw = await readFile(CACHE_PATH, "utf8");
-    const cache = JSON.parse(raw);
-
-    const today = new Date().toISOString().slice(0, 10);
-    const activity = cache.dailyActivity ?? [];
-
-    const todayEntry = activity.find((d) => d.date === today);
-    const targetEntry = todayEntry ?? activity[activity.length - 1];
-
-    if (!targetEntry) return;
-
-    const maxMessages = Math.max(...activity.map((d) => d.messageCount));
-    tokenPercent =
-      maxMessages > 0 ? (targetEntry.messageCount / maxMessages) * 100 : 0;
-
+    tokenPercent = getTodayPercent();
     console.log(
-      `[${new Date().toLocaleTimeString()}] ${targetEntry.date} — ` +
-        `${targetEntry.messageCount} msgs (${tokenPercent.toFixed(1)}% of peak ${maxMessages})`
+      `[${new Date().toLocaleTimeString()}] ${tokenPercent.toFixed(1)}% of peak token day`
     );
   } catch (err) {
     console.error(
