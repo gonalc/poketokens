@@ -1,111 +1,47 @@
 ---
-description: Use Bun instead of Node.js, npm, pnpm, or vite.
-globs: "*.ts, *.tsx, *.html, *.css, *.js, *.jsx, package.json"
+description: Node.js server context for the PokeTokens project.
+globs: "*.js, package.json, .env*"
 alwaysApply: false
 ---
 
-Default to using Bun instead of Node.js.
+# server — Claude Code context
 
-- Use `bun <file>` instead of `node <file>` or `ts-node <file>`
-- Use `bun test` instead of `jest` or `vitest`
-- Use `bun build <file.html|file.ts|file.css>` instead of `webpack` or `esbuild`
-- Use `bun install` instead of `npm install` or `yarn install` or `pnpm install`
-- Use `bun run <script>` instead of `npm run <script>` or `yarn run <script>` or `pnpm run <script>`
-- Bun automatically loads .env, so don't use dotenv.
+This is a **Node.js** project using native ES modules (`"type": "module"`). There is no TypeScript, no Bun, and no build step.
 
-## APIs
+## Runtime
 
-- `Bun.serve()` supports WebSockets, HTTPS, and routes. Don't use `express`.
-- `bun:sqlite` for SQLite. Don't use `better-sqlite3`.
-- `Bun.redis` for Redis. Don't use `ioredis`.
-- `Bun.sql` for Postgres. Don't use `pg` or `postgres.js`.
-- `WebSocket` is built-in. Don't use `ws`.
-- Prefer `Bun.file` over `node:fs`'s readFile/writeFile
-- Bun.$`ls` instead of execa.
+- Run: `npm start` → `node index.js`
+- Install: `npm install`
+- Entry point: `index.js`
 
-## Testing
+## What the server does
 
-Use `bun test` to run tests.
+1. Reads `~/.claude/stats-cache.json` every 30 seconds and calculates `(today's messageCount / peak messageCount) * 100`
+2. Auto-detects the ESP32 serial port (or reads `SERIAL_PORT` from `.env`)
+3. Writes `tokens=XX.X\n` to the serial port every 1 second
 
-```ts#index.test.ts
-import { test, expect } from "bun:test";
+## Environment variables
 
-test("hello world", () => {
-  expect(1).toBe(1);
-});
+| Variable      | Required | Description |
+|---------------|----------|-------------|
+| `SERIAL_PORT` | No       | Override ESP32 port auto-detection |
+
+## Dependencies
+
+- `serialport@13` — only external dependency
+
+## Common tasks
+
+**Add a new serial field** (e.g., `pokemon=PIKACHU`)
+Edit the `setInterval` at the bottom of `main()` in `index.js` to append the new field:
+```js
+port.write(`tokens=${tokenPercent.toFixed(1)},pokemon=PIKACHU\n`);
 ```
+Then update `parseSerialLine()` in `display/src/main.cpp` to handle the new key.
 
-## Frontend
-
-Use HTML imports with `Bun.serve()`. Don't use `vite`. HTML imports fully support React, CSS, Tailwind.
-
-Server:
-
-```ts#index.ts
-import index from "./index.html"
-
-Bun.serve({
-  routes: {
-    "/": index,
-    "/api/users/:id": {
-      GET: (req) => {
-        return new Response(JSON.stringify({ id: req.params.id }));
-      },
-    },
-  },
-  // optional websocket support
-  websocket: {
-    open: (ws) => {
-      ws.send("Hello, world!");
-    },
-    message: (ws, message) => {
-      ws.send(message);
-    },
-    close: (ws) => {
-      // handle close
-    }
-  },
-  development: {
-    hmr: true,
-    console: true,
-  }
-})
+**Test without hardware**
+Use a virtual serial pair with `socat`:
+```bash
+socat -d -d pty,raw,echo=0 pty,raw,echo=0
+# Set SERIAL_PORT to one of the pty paths in .env
 ```
-
-HTML files can import .tsx, .jsx or .js files directly and Bun's bundler will transpile & bundle automatically. `<link>` tags can point to stylesheets and Bun's CSS bundler will bundle.
-
-```html#index.html
-<html>
-  <body>
-    <h1>Hello, world!</h1>
-    <script type="module" src="./frontend.tsx"></script>
-  </body>
-</html>
-```
-
-With the following `frontend.tsx`:
-
-```tsx#frontend.tsx
-import React from "react";
-
-// import .css files directly and it works
-import './index.css';
-
-import { createRoot } from "react-dom/client";
-
-const root = createRoot(document.body);
-
-export default function Frontend() {
-  return <h1>Hello, world!</h1>;
-}
-
-root.render(<Frontend />);
-```
-
-Then, run index.ts
-
-```sh
-bun --hot ./index.ts
-```
-
-For more information, read the Bun API docs in `node_modules/bun-types/docs/**.md`.
