@@ -9,9 +9,9 @@ let tokenPercent = 0;
 
 async function refreshUsage() {
   try {
-    tokenPercent = getTodayPercent();
+    tokenPercent = await getTodayPercent();
     console.log(
-      `[${new Date().toLocaleTimeString()}] ${tokenPercent.toFixed(1)}% of peak token day`
+      `[${new Date().toLocaleTimeString()}] ${tokenPercent.toFixed(1)}% usage`
     );
   } catch (err) {
     console.error(

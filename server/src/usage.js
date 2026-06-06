@@ -1,8 +1,33 @@
 import fs from "fs";
 import path from "path";
 import os from "os";
+import { execSync } from "child_process";
 
 const CLAUDE_DIR = path.join(os.homedir(), ".claude", "projects");
+const USAGE_API = "https://api.anthropic.com/api/oauth/usage";
+
+function getOAuthToken() {
+  const raw = execSync(
+    `security find-generic-password -a "${process.env.USER}" -w -s "Claude Code-credentials"`,
+    { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }
+  ).trim();
+  const creds = JSON.parse(raw);
+  return creds.claudeAiOauth?.accessToken;
+}
+
+async function getRealPercent() {
+  const token = getOAuthToken();
+  if (!token) return null;
+
+  const res = await fetch(USAGE_API, {
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    signal: AbortSignal.timeout(5000),
+  });
+
+  if (!res.ok) return null;
+  const data = await res.json();
+  return data.five_hour?.utilization ?? data.seven_day?.utilization ?? null;
+}
 
 function findJsonlFiles(dir) {
   let results = [];
@@ -45,7 +70,7 @@ function buildDailyTokenMap() {
   return byDay;
 }
 
-export function getTodayPercent() {
+function getLocalPercent() {
   const byDay = buildDailyTokenMap();
   if (byDay.size === 0) return 0;
 
@@ -54,4 +79,14 @@ export function getTodayPercent() {
   const peakTokens = Math.max(...byDay.values());
 
   return peakTokens > 0 ? (todayTokens / peakTokens) * 100 : 0;
+}
+
+export async function getTodayPercent() {
+  try {
+    const real = await getRealPercent();
+    if (real !== null) return real;
+  } catch {
+    // fall through to local calculation
+  }
+  return getLocalPercent();
 }
