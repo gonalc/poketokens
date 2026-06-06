@@ -16,9 +16,12 @@ const unsigned char epd_bitmap_pikachu [] PROGMEM = {
 };
 
 float tokenPercent = 0.0;
+char pokemonName[16] = "PIKACHU";
+char spirit[16] = "";
 unsigned long lastBlink = 0;
 bool blinkState = true;
-unsigned long lastDemo = 0;
+
+String serialBuffer = "";
 
 void drawFrame() {
   // Solo borde derecho y borde inferior — sin flecha
@@ -66,13 +69,35 @@ void drawHPBar(float percentUsed) {
   }
 }
 
+void parseSerialLine(const String& line) {
+  int start = 0;
+  while (start < (int)line.length()) {
+    int comma = line.indexOf(',', start);
+    String token = (comma == -1) ? line.substring(start) : line.substring(start, comma);
+    start = (comma == -1) ? line.length() : comma + 1;
+
+    int eq = token.indexOf('=');
+    if (eq == -1) continue;
+    String key = token.substring(0, eq);
+    String val = token.substring(eq + 1);
+    key.trim(); val.trim();
+
+    if (key == "tokens") {
+      tokenPercent = val.toFloat();
+    } else if (key == "pokemon") {
+      val.toCharArray(pokemonName, sizeof(pokemonName));
+    } else if (key == "spirit") {
+      val.toCharArray(spirit, sizeof(spirit));
+    }
+  }
+}
+
 void drawStats(float percentUsed) {
   float hp = 100.0 - percentUsed;
   char buf[20];
 
-  // Nombre
   u8g2.setFont(u8g2_font_6x10_tr);
-  u8g2.drawStr(42, 18, "PIKACHU");
+  u8g2.drawStr(42, 18, pokemonName);
 
   // PS label + barra
   drawHPBar(percentUsed);
@@ -96,10 +121,15 @@ void loop() {
     lastBlink = millis();
   }
 
-  if (millis() - lastDemo > 100) {
-    tokenPercent += 0.5;
-    if (tokenPercent > 100) tokenPercent = 0;
-    lastDemo = millis();
+  while (Serial.available()) {
+    char c = Serial.read();
+    if (c == '\n') {
+      serialBuffer.trim();
+      if (serialBuffer.length() > 0) parseSerialLine(serialBuffer);
+      serialBuffer = "";
+    } else {
+      serialBuffer += c;
+    }
   }
 
   u8g2.clearBuffer();
