@@ -18,6 +18,7 @@ const unsigned char epd_bitmap_pikachu [] PROGMEM = {
 float tokenPercent = 0.0;
 char pokemonName[16] = "PIKACHU";
 char spirit[16] = "";
+int resetsMinutes = -1;
 unsigned long lastBlink = 0;
 bool blinkState = true;
 
@@ -84,6 +85,8 @@ void parseSerialLine(const String& line) {
 
     if (key == "tokens") {
       tokenPercent = val.toFloat();
+    } else if (key == "resets") {
+      resetsMinutes = val.toInt();
     } else if (key == "pokemon") {
       val.toCharArray(pokemonName, sizeof(pokemonName));
     } else if (key == "spirit") {
@@ -102,8 +105,18 @@ void drawStats(float percentUsed) {
   // PS label + barra
   drawHPBar(percentUsed);
 
-  // Número alineado a la derecha
+  // Tiempo hasta reset
   u8g2.setFont(u8g2_font_5x7_tr);
+  if (resetsMinutes >= 0) {
+    if (resetsMinutes >= 60) {
+      snprintf(buf, sizeof(buf), "~%dh%02dm", resetsMinutes / 60, resetsMinutes % 60);
+    } else {
+      snprintf(buf, sizeof(buf), "~%dm", resetsMinutes);
+    }
+    u8g2.drawStr(42, 49, buf);
+  }
+
+  // Número alineado a la derecha
   snprintf(buf, sizeof(buf), "%.0f /100", hp);
   int textX = 122 - (strlen(buf) * 5);
   u8g2.drawStr(textX, 56, buf);

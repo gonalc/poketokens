@@ -1,17 +1,23 @@
 import { SerialPort } from "serialport";
-import { getTodayPercent } from "./src/usage.js";
+import { getUsage } from "./src/usage.js";
 
 const BAUD_RATE = 115200;
 const POLL_MS = 30_000;
 const SERIAL_MS = 1_000;
 
 let tokenPercent = 0;
+let resetsMinutes = -1;
 
 async function refreshUsage() {
   try {
-    tokenPercent = await getTodayPercent();
+    const usage = await getUsage();
+    tokenPercent = usage.percent;
+    resetsMinutes = usage.resetsAt
+      ? Math.max(0, Math.round((new Date(usage.resetsAt) - Date.now()) / 60000))
+      : -1;
     console.log(
-      `[${new Date().toLocaleTimeString()}] ${tokenPercent.toFixed(1)}% usage`
+      `[${new Date().toLocaleTimeString()}] ${tokenPercent.toFixed(1)}% usage` +
+        (resetsMinutes >= 0 ? `, resets in ${resetsMinutes}m` : "")
     );
   } catch (err) {
     console.error(
@@ -91,7 +97,7 @@ async function main() {
   setInterval(refreshUsage, POLL_MS);
 
   setInterval(() => {
-    const line = `tokens=${tokenPercent.toFixed(1)}\n`;
+    const line = `tokens=${tokenPercent.toFixed(1)},resets=${resetsMinutes}\n`;
     port.write(line, (err) => {
       if (err) console.error("Write error:", err.message);
     });

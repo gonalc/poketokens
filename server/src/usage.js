@@ -15,7 +15,7 @@ function getOAuthToken() {
   return creds.claudeAiOauth?.accessToken;
 }
 
-async function getRealPercent() {
+async function getRealUsage() {
   const token = getOAuthToken();
   if (!token) return null;
 
@@ -26,7 +26,14 @@ async function getRealPercent() {
 
   if (!res.ok) return null;
   const data = await res.json();
-  return data.five_hour?.utilization ?? data.seven_day?.utilization ?? null;
+
+  const window = data.five_hour ?? data.seven_day ?? null;
+  if (!window) return null;
+
+  return {
+    percent: window.utilization,
+    resetsAt: window.resets_at ?? null,
+  };
 }
 
 function findJsonlFiles(dir) {
@@ -81,12 +88,12 @@ function getLocalPercent() {
   return peakTokens > 0 ? (todayTokens / peakTokens) * 100 : 0;
 }
 
-export async function getTodayPercent() {
+export async function getUsage() {
   try {
-    const real = await getRealPercent();
+    const real = await getRealUsage();
     if (real !== null) return real;
   } catch {
     // fall through to local calculation
   }
-  return getLocalPercent();
+  return { percent: getLocalPercent(), resetsAt: null };
 }
