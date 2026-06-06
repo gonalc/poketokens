@@ -25,7 +25,7 @@ bool blinkState = true;
 String serialBuffer = "";
 
 void drawFrame() {
-  // Solo borde derecho y borde inferior — sin flecha
+  // Right border and bottom border only — no arrow
   u8g2.drawVLine(127, 0, 64);
   u8g2.drawHLine(38, 63, 90);
   u8g2.drawVLine(38, 0, 64);
@@ -34,11 +34,11 @@ void drawFrame() {
 void drawHPBar(float percentUsed) {
   float hp = 100.0 - percentUsed;
 
-  // "PS:" en su propia línea
+  // "PS:" on its own line
   u8g2.setFont(u8g2_font_5x7_tr);
   u8g2.drawStr(42, 30, "PS:");
 
-  // Barra en la línea siguiente, con más espacio
+  // Bar on the next line, with extra padding
   int barX = 42;
   int barY = 33;
   int barW = 80;
@@ -102,10 +102,10 @@ void drawStats(float percentUsed) {
   u8g2.setFont(u8g2_font_6x10_tr);
   u8g2.drawStr(42, 18, pokemonName);
 
-  // PS label + barra
+  // PS label + bar
   drawHPBar(percentUsed);
 
-  // Tiempo hasta reset
+  // Time until reset
   u8g2.setFont(u8g2_font_5x7_tr);
   if (resetsMinutes >= 0) {
     if (resetsMinutes >= 60) {
@@ -116,7 +116,7 @@ void drawStats(float percentUsed) {
     u8g2.drawStr(42, 49, buf);
   }
 
-  // Número alineado a la derecha
+  // Right-aligned number
   snprintf(buf, sizeof(buf), "%.0f /100", hp);
   int textX = 122 - (strlen(buf) * 5);
   u8g2.drawStr(textX, 56, buf);
