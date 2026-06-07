@@ -44,12 +44,20 @@ const unsigned char* getSpriteForPokemon(const char* name) {
   return epd_bitmap_pikachu;
 }
 
+#define BUTTON_PIN 4
+
 float tokenPercent = 0.0;
 char pokemonName[16] = "PIKACHU";
 char spirit[16] = "";
 int resetsMinutes = -1;
 unsigned long lastBlink = 0;
 bool blinkState = true;
+
+bool buttonAvailable = false;
+bool lastButtonReading = HIGH;
+bool stableButtonState = HIGH;
+unsigned long lastDebounce = 0;
+const unsigned long debounceDelay = 50;
 
 String serialBuffer = "";
 
@@ -155,12 +163,40 @@ void setup() {
   Wire.begin(21, 22);
   u8g2.begin();
   Serial.begin(115200);
+  randomSeed(esp_random());
+
+  // GPIO 0-39 are valid on ESP32; 6-11 are reserved for flash
+  if (BUTTON_PIN >= 0 && BUTTON_PIN <= 39 && !(BUTTON_PIN >= 6 && BUTTON_PIN <= 11)) {
+    pinMode(BUTTON_PIN, INPUT_PULLUP);
+    buttonAvailable = true;
+    Serial.printf("[button] found on pin %d\n", BUTTON_PIN);
+  } else {
+    Serial.printf("[button] NOT available (pin %d is invalid or reserved)\n", BUTTON_PIN);
+  }
 }
 
 void loop() {
   if (millis() - lastBlink > 400) {
     blinkState = !blinkState;
     lastBlink = millis();
+  }
+
+  if (buttonAvailable) {
+    bool reading = digitalRead(BUTTON_PIN);
+    if (reading != lastButtonReading) {
+      lastDebounce = millis();
+      lastButtonReading = reading;
+    }
+    if ((millis() - lastDebounce) > debounceDelay && reading != stableButtonState) {
+      stableButtonState = reading;
+      if (stableButtonState == LOW) {
+        int idx;
+        do { idx = random(spritesCount); } while (spritesCount > 1 && strcmp(sprites[idx].name, pokemonName) == 0);
+        strncpy(pokemonName, sprites[idx].name, sizeof(pokemonName) - 1);
+        pokemonName[sizeof(pokemonName) - 1] = '\0';
+        Serial.printf("[button] pressed → switching to %s\n", pokemonName);
+      }
+    }
   }
 
   while (Serial.available()) {

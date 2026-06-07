@@ -24,11 +24,17 @@ async function getRealUsage() {
     signal: AbortSignal.timeout(5000),
   });
 
-  if (!res.ok) return null;
+  if (!res.ok) {
+    console.warn(`[usage API] HTTP ${res.status}: ${await res.text()}`);
+    return null;
+  }
   const data = await res.json();
 
   const window = data.five_hour ?? data.seven_day ?? null;
-  if (!window) return null;
+  if (!window) {
+    console.warn(`[usage API] no window in response:`, JSON.stringify(data));
+    return null;
+  }
 
   return {
     percent: window.utilization,
@@ -92,8 +98,8 @@ export async function getUsage() {
   try {
     const real = await getRealUsage();
     if (real !== null) return real;
-  } catch {
-    // fall through to local calculation
+  } catch (err) {
+    console.warn(`[usage API] error:`, err instanceof Error ? err.message : err);
   }
   return { percent: getLocalPercent(), resetsAt: null };
 }

@@ -2,7 +2,7 @@ import { SerialPort } from "serialport";
 import { getUsage } from "./src/usage.js";
 
 const BAUD_RATE = 115200;
-const POLL_MS = 30_000;
+const POLL_MS = 60_000;
 const SERIAL_MS = 1_000;
 
 let tokenPercent = 0;
