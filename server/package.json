@@ -7,6 +7,7 @@
     "start": "node index.js"
   },
   "dependencies": {
+    "ccusage": "^20.0.9",
     "serialport": "^13.0.0"
   }
 }

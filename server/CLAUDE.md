@@ -16,9 +16,21 @@ This is a **Node.js** project using native ES modules (`"type": "module"`). Ther
 
 ## What the server does
 
-1. Reads `~/.claude/stats-cache.json` every 30 seconds and calculates `(today's messageCount / peak messageCount) * 100`
+1. Resolves usage % and reset time via `getUsage()` in `src/usage.js` every 60s, trying two sources in order:
+   - **`ccusage` subprocess** — spawns `ccusage daily --json` to compute `(today / peak day) * 100`; spawns `ccusage blocks --active --json` for the reset time (`endTime` of the active 5-hour window). Reads local JSONL files, no network required.
+   - **`/api/oauth/usage`** — throttled (≥ 5 min between calls) with 429 `retry-after` backoff and a last-good cache. Fallback only; returns the actual API utilization % if ccusage fails.
 2. Auto-detects the ESP32 serial port (or reads `SERIAL_PORT` from `.env`)
-3. Writes `tokens=XX.X\n` to the serial port every 1 second
+3. Writes `tokens=XX.X,resets=<minutes>\n` to the serial port every 1 second
+
+## Statusline (`statusline.js`)
+
+`statusline.js` is registered as Claude Code's `statusLine` command in `~/.claude/settings.json`:
+
+```json
+"statusLine": { "type": "command", "command": "node /absolute/path/to/server/statusline.js" }
+```
+
+Claude Code pipes the live session JSON to it on stdin on every render. It prints a compact status line (`model · ctx X% · 5h Y%`) for the Claude Code UI. It no longer writes any files — usage data is fetched independently by the server via ccusage.
 
 ## Environment variables
 
@@ -28,7 +40,8 @@ This is a **Node.js** project using native ES modules (`"type": "module"`). Ther
 
 ## Dependencies
 
-- `serialport@13` — only external dependency
+- `serialport@13` — serial port communication
+- `ccusage` — spawned as a subprocess to read local JSONL usage data
 
 ## Common tasks
 

@@ -1,10 +1,16 @@
-import fs from "fs";
-import path from "path";
 import os from "os";
-import { execSync } from "child_process";
+import { execSync, execFileSync } from "child_process";
 
-const CLAUDE_DIR = path.join(os.homedir(), ".claude", "projects");
 const USAGE_API = "https://api.anthropic.com/api/oauth/usage";
+const CCUSAGE_BIN = new URL("../node_modules/.bin/ccusage", import.meta.url).pathname;
+
+// The /api/oauth/usage endpoint is undocumented and aggressively rate-limited
+// (HTTP 429), so it is only a fallback and is throttled hard.
+const API_MIN_INTERVAL_MS = 5 * 60_000;
+
+let lastApiAttempt = 0;
+let backoffUntil = 0;
+let lastGoodApiUsage = null;
 
 function getOAuthToken() {
   const raw = execSync(
@@ -15,9 +21,35 @@ function getOAuthToken() {
   return creds.claudeAiOauth?.accessToken;
 }
 
+function runCcusage(...args) {
+  const out = execFileSync(CCUSAGE_BIN, [...args, "--json", "--no-color"], {
+    encoding: "utf8",
+    timeout: 10_000,
+  });
+  return JSON.parse(out);
+}
+
+const PRO_PLAN_5H_LIMIT = 7_000_000;
+
+async function getCcusageData() {
+  const { blocks } = runCcusage("blocks", "--active", "--token-limit", String(PRO_PLAN_5H_LIMIT));
+  const active = blocks.find((b) => b.isActive);
+  if (!active) return { percent: 0, resetsAt: null };
+
+  const percent = (active.totalTokens / PRO_PLAN_5H_LIMIT) * 100;
+  const resetsAt = active.endTime;
+  return { percent, resetsAt };
+}
+
 async function getRealUsage() {
+  const now = Date.now();
+  if (now < backoffUntil || now - lastApiAttempt < API_MIN_INTERVAL_MS) {
+    return lastGoodApiUsage;
+  }
+  lastApiAttempt = now;
+
   const token = getOAuthToken();
-  if (!token) return null;
+  if (!token) return lastGoodApiUsage;
 
   const res = await fetch(USAGE_API, {
     headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
@@ -25,81 +57,49 @@ async function getRealUsage() {
   });
 
   if (!res.ok) {
-    console.warn(`[usage API] HTTP ${res.status}: ${await res.text()}`);
-    return null;
+    if (res.status === 429) {
+      const retryAfter = Number(res.headers.get("retry-after"));
+      const backoffMs =
+        Number.isFinite(retryAfter) && retryAfter > 0
+          ? retryAfter * 1000
+          : API_MIN_INTERVAL_MS * 2;
+      backoffUntil = Date.now() + backoffMs;
+      console.warn(`[usage API] HTTP 429, backing off ${Math.round(backoffMs / 1000)}s`);
+    } else {
+      console.warn(`[usage API] HTTP ${res.status}: ${await res.text()}`);
+    }
+    return lastGoodApiUsage;
   }
   const data = await res.json();
 
   const window = data.five_hour ?? data.seven_day ?? null;
   if (!window) {
     console.warn(`[usage API] no window in response:`, JSON.stringify(data));
-    return null;
+    return lastGoodApiUsage;
   }
 
-  return {
+  lastGoodApiUsage = {
     percent: window.utilization,
     resetsAt: window.resets_at ?? null,
   };
-}
-
-function findJsonlFiles(dir) {
-  let results = [];
-  for (const item of fs.readdirSync(dir)) {
-    const fullPath = path.join(dir, item);
-    if (fs.statSync(fullPath).isDirectory()) {
-      results = results.concat(findJsonlFiles(fullPath));
-    } else if (item.endsWith(".jsonl")) {
-      results.push(fullPath);
-    }
-  }
-  return results;
-}
-
-function buildDailyTokenMap() {
-  const byDay = new Map();
-
-  for (const file of findJsonlFiles(CLAUDE_DIR)) {
-    for (const line of fs.readFileSync(file, "utf8").split("\n")) {
-      if (!line.trim()) continue;
-      try {
-        const json = JSON.parse(line);
-        const u = json.message?.usage;
-        if (!u || !json.timestamp) continue;
-
-        const date = json.timestamp.slice(0, 10);
-        const tokens =
-          (u.input_tokens || 0) +
-          (u.output_tokens || 0) +
-          (u.cache_creation_input_tokens || 0) +
-          (u.cache_read_input_tokens || 0);
-
-        byDay.set(date, (byDay.get(date) ?? 0) + tokens);
-      } catch {
-        // ignore malformed lines
-      }
-    }
-  }
-
-  return byDay;
-}
-
-function getLocalPercent() {
-  const byDay = buildDailyTokenMap();
-  if (byDay.size === 0) return 0;
-
-  const today = new Date().toISOString().slice(0, 10);
-  const todayTokens = byDay.get(today) ?? 0;
-  const peakTokens = Math.max(...byDay.values());
-
-  return peakTokens > 0 ? (todayTokens / peakTokens) * 100 : 0;
+  return lastGoodApiUsage;
 }
 
 export async function getUsage() {
+  // 1. ccusage subprocess — reads local JSONL files, no network required.
+  try {
+    return await getCcusageData();
+  } catch (err) {
+    console.warn(`[ccusage] error:`, err instanceof Error ? err.message : err);
+  }
+
+  // 2. Throttled API fallback.
   try {
     const real = await getRealUsage();
     if (real !== null) return real;
   } catch (err) {
     console.warn(`[usage API] error:`, err instanceof Error ? err.message : err);
   }
-  return { percent: getLocalPercent(), resetsAt: null };
+
+  return { percent: 0, resetsAt: null };
 }

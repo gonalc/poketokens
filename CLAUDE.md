@@ -12,7 +12,7 @@ IoT project: a Node.js server reads Claude Code daily message usage stats and se
 
 | Folder    | Language          | Purpose |
 |-----------|-------------------|---------|
-| `server/` | JavaScript (Node.js ES modules) | Reads `~/.claude/stats-cache.json`, drives serial port |
+| `server/` | JavaScript (Node.js ES modules) | Resolves Claude Code usage % + reset time, drives serial port |
 | `display/` | C++ / Arduino    | ESP32 firmware — renders Pikachu HP bar on OLED |
 | `sprites/` | —                | Source PNG for the Pikachu XBM bitmap embedded in `main.cpp` |
 
